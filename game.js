@@ -1,10 +1,13 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const bgImg = new Image();
+bgImg.src = "background (2).png";
 
 // Settings
 const MAX_BALL_SPEED = 10;
 const BOUNCE_SCORE = 100;   // score where bounce mode starts
-const BOUNCE_SPEED = 8;     // how fast the ball travels in bounce mode
+const BOUNCE_SPEED = 5;     // how fast the ball travels in bounce mode
+const POINTS_PER_CATCH = 2; // change to 3 for even faster scoring
 
 // The basket
 const basket = {
@@ -27,6 +30,7 @@ const ball = {
 };
 
 let score = 0;
+let catches = 0;
 let highScore = Number(localStorage.getItem("catchHighScore")) || 0;
 let gameOver = false;
 let started = false;
@@ -41,6 +45,7 @@ function resetBall() {
 
 function restart() {
   score = 0;
+  catches = 0;
   gameOver = false;
   ball.speed = 3;
   resetBall();
@@ -129,8 +134,33 @@ function drawGameOver() {
   ctx.textAlign = "left";
 }
 
+let audioCtx = null;
+
+// a short "blip" on each catch. pitch rises as the score goes up.
+function playCatchSound() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "square";
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  const now = audioCtx.currentTime;
+  osc.frequency.setValueAtTime(600, now);
+  osc.frequency.exponentialRampToValueAtTime(150, now + 0.1);
+  gain.gain.setValueAtTime(0.1, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+  osc.start(now);
+  osc.stop(now + 0.1);
+}
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
 
   if (!started) {
     drawStartScreen();
@@ -187,7 +217,9 @@ function draw() {
     ball.x <= basket.x + basket.width;
 
   if (caught) {
-    score++;
+    playCatchSound();
+    score += POINTS_PER_CATCH;
+    catches++;
 
     if (score >= BOUNCE_SCORE) {
       // Launch toward the nearest side wall and up
@@ -200,7 +232,7 @@ function draw() {
       resetBall();
 
       // Speed up every 5 catches, up to the cap
-      if (score % 5 === 0 && ball.speed < MAX_BALL_SPEED) {
+      if (catches % 4 === 0 && ball.speed < MAX_BALL_SPEED) {
         ball.speed += 0.5;
       }
     }
@@ -214,16 +246,27 @@ function draw() {
   ctx.fillRect(basket.x, basket.y, basket.width, basket.height);
 
   // Draw the ball
-  ctx.fillStyle = "white";
+  ctx.fillStyle = "black";
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
   ctx.fill();
 
   // Draw the score
-  ctx.fillStyle = "white";
   ctx.font = "24px sans-serif";
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "black";
+  ctx.fillStyle = "white";
+
+  ctx.strokeText("Score: " + score, 16, 32);
   ctx.fillText("Score: " + score, 16, 32);
+
+  ctx.strokeText("High: " + highScore, 16, 60);
   ctx.fillText("High: " + highScore, 16, 60);
+
+  if (!ball.bouncing && score < BOUNCE_SCORE) {
+    ctx.strokeText("Bounce mode in " + (BOUNCE_SCORE - score), 16, 88);
+    ctx.fillText("Bounce mode in " + (BOUNCE_SCORE - score), 16, 88);
+  }
 
   if (ball.bouncing) {
     ctx.fillStyle = "gold";
